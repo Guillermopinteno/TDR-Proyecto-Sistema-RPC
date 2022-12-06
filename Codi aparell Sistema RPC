@@ -1,0 +1,1461 @@
+#include <SPI.h>    // incluye libreria interfaz SPI
+#include <SD.h>     //libreria para SD
+
+//pin LED azul ---- 2      Microondas 
+//pin LED yell ---- 3      Vitroceramica     //Info de los pines de control de corriente (relé) que corresponden a cada LED
+//pin LED verd ---- 6      Horno
+//pin LED rojo ---- 5      Lavadora
+//pin LED nev ----- 7      Nevera
+
+#define read_azul A0       //Microondas
+#define read_yell A1       //Vitroceramica           //Definir los pines que verán si los leds están encendidos o no
+#define read_verd A2       //Horno
+#define read_rojo A3       //Lavadora
+#define read_nev A4        //Nevera
+
+#define read_settings A8 //Cuando se pulse el "botón" entra en modo ajustes
+#define read_enabled A9  //Dependiendo de si deja pasar la corriente o no el sistema estará operativo o no funcionará (hace falta un interruptor)
+
+int pot_max = 2000;   //Establecer potencia máxima
+int pot_actual;       //Establecer la potencia usada en el momento
+
+int pot_azul = 1000;      //Microondas
+int pot_yell = 900;       //Vitroceramica              //Establecer las potencias de cad LED
+int pot_verd = 500;       //Horno
+int pot_rojo = 700;       //Lavadora
+int pot_nev = 500;        //Nevera
+
+int posnev[] = {7, pot_nev, read_nev};
+int pos1[] = {2, pot_azul, read_azul};
+int pos2[] = {3, pot_yell, read_yell};    //Establecer el LED y su potencia correspondiente
+int pos3[] = {6, pot_verd, read_verd};
+int pos4[] = {5, pot_rojo, read_rojo};
+
+int encendido[] = {0, 0, 0, 0};
+int espera[] = {0, 0, 0, 0};         //Variable que controla que led está en espera.
+
+
+//---------COSAS NECESARIAS PARA EL LCD Y EL KEYPAD-----------------
+
+#include <Keypad.h>
+
+const int ROW_NUM = 4; //four rows
+const int COLUMN_NUM = 4; //four columns
+
+char keys[ROW_NUM][COLUMN_NUM] = {
+  {'1','2','3', 'A'},
+  {'4','5','6', 'B'},
+  {'7','8','9', 'C'},
+  {'*','0','#', 'D'}
+};
+
+byte pin_rows[ROW_NUM] = {22, 23, 24, 25}; //connect to the row pinouts of the keypad
+byte pin_column[COLUMN_NUM] = {26, 27, 28, 29}; //connect to the column pinouts of the keypad
+
+Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );
+
+
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+
+//Crear el objeto lcd  dirección  0x3F y 16 columnas x 2 filas
+LiquidCrystal_I2C lcd(0x27,16,2);  //
+
+
+bool keyEntered = false;    //Esta variable sirve para saber si en el momento de pedir la prioridad la tecla ha sido pulsada y salir del bucle while()
+int keyNumber = 0;          //Este es un contador para saber cuantas teclas se han pulsado en el momento de pedir la potencia.
+bool completed = false;
+
+
+//---- variables SD-----
+File archivo;
+
+String sd_pos1[] = {"", ""};
+String sd_pos2[] = {"", ""};
+String sd_pos3[] = {"", ""};
+String sd_pos4[] = {"", ""};
+String sd_pot_max = "";
+String sd_pot_nev = "";
+
+
+void setup() {
+  Serial.begin(9600);
+
+  
+  //-----------------------------------------------------------------------------------------------------------------------------------
+  //------------------------------------------------- LLEGIR DADES DE LA TARGETA SD ---------------------------------------------------
+  //-----------------------------------------------------------------------------------------------------------------------------------
+  
+  SD.begin(4);
+  archivo = SD.open("DATOS.TXT"); //Abrir archivo donde se guarda la info de prioridades y potencias
+  String linea = "";
+  char ch;
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pos1[0] = linea.toInt();
+  linea = "";
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pos2[0] = linea.toInt();
+  linea = "";
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pos3[0] = linea.toInt();
+  linea = "";
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pos4[0] = linea.toInt();
+  linea = "";
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pos1[1] = linea.toInt();
+  linea = "";
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pos2[1] = linea.toInt();
+  linea = "";
+
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pos3[1] = linea.toInt();
+  linea = "";
+
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pos4[1] = linea.toInt();
+  linea = "";
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  pot_max = linea.toInt();
+  linea = "";
+
+
+  while (archivo.available())
+  {
+    ch = archivo.read();
+      if (ch == '\n')
+      {
+        break;
+      }
+      else
+      {
+        linea += ch;
+      }
+  }
+  posnev[1] = linea.toInt();
+  linea = "";
+  
+
+  archivo.close();
+
+
+  if(pos1[0] == 2){
+    pos1[2] = read_azul;
+  }
+  else if(pos1[0] == 3){
+    pos1[2] = read_yell;
+  }
+  else if(pos1[0] == 5){
+    pos1[2] = read_rojo;
+  }
+  else if(pos1[0] == 6){
+    pos1[2] = read_verd;
+  }
+
+
+  if(pos2[0] == 2){
+    pos2[2] = read_azul;
+  }
+  else if(pos2[0] == 3){
+    pos2[2] = read_yell;
+  }
+  else if(pos2[0] == 5){
+    pos2[2] = read_rojo;
+  }
+  else if(pos2[0] == 6){
+    pos2[2] = read_verd;
+  }
+
+
+  if(pos3[0] == 2){
+    pos3[2] = read_azul;
+  }
+  else if(pos3[0] == 3){
+    pos3[2] = read_yell;
+  }
+  else if(pos3[0] == 5){
+    pos3[2] = read_rojo;
+  }
+  else if(pos3[0] == 6){
+    pos3[2] = read_verd;
+  }
+
+
+  if(pos4[0] == 2){
+    pos4[2] = read_azul;
+  }
+  else if(pos4[0] == 3){
+    pos4[2] = read_yell;
+  }
+  else if(pos4[0] == 5){
+    pos4[2] = read_rojo;
+  }
+  else if(pos4[0] == 6){
+    pos4[2] = read_verd;
+  }
+  Serial.println("---------------------------------");
+  Serial.print("Posición 1: ");
+  Serial.println(pos1[0]);
+  Serial.print("Posición 2: ");
+  Serial.println(pos2[0]);
+  Serial.print("Posición 3: ");                                       //Aquest codi només serveix per monitoritzar el programa desde l'ordinador (no té cap utilitat final).
+  Serial.println(pos3[0]);
+  Serial.print("Posición 4: ");
+  Serial.println(pos4[0]);
+  Serial.print("Potencia maxima: ");
+  Serial.println(pot_max);
+  Serial.print("-----------------------------------");
+
+  lcd.init();
+  lcd.backlight();
+  
+  
+  pinMode(2, OUTPUT);
+  pinMode(3, OUTPUT);   //Establir els pins de sortida
+  pinMode(6, OUTPUT);
+  pinMode(5, OUTPUT);
+
+  pinMode(read_azul, INPUT);
+  pinMode(read_yell, INPUT);    //Establir els pins d'entrada
+  pinMode(read_verd, INPUT);
+  pinMode(read_rojo, INPUT);
+}
+
+
+//###################################################################################################################################################################################################
+//####################################################################### INICI DEL CODI DEL SISTEMA ################################################################################################
+//###################################################################################################################################################################################################
+
+
+
+void loop() {
+
+  //----MIRAR SI LOS LEDS ESTÁN ENCENDIDOS Y SI LO ESTÁN SUMAR SU POTENCIA A LA ACTUAL UTILIZADA--------------
+
+  //------------------------------------------------------------------------------------------------------------------------------------
+  //-------------- COMPROVACIÓ DELS ELECTRODOMÈSTICS ENCESOS, LA POTÈNCIA QUE CONSUMEIXEN CADASCUN I LA POTÈNCIA TOTAL -----------------
+  //------------------------------------------------------------------------------------------------------------------------------------
+ 
+    
+  if (analogRead(posnev[2]) >= 900){
+    pot_actual = pot_actual + posnev[1];
+  }delay(100);
+  if (analogRead(pos1[2]) >= 900){
+    Serial.print("YESSSS");
+    pot_actual = pot_actual + pos1[1];
+    encendido[0] = 1;
+  }delay(100);
+  if (analogRead(pos2[2]) >= 900){       
+    pot_actual = pot_actual + pos2[1];
+    encendido[1] = 1;
+  }delay(100);
+  if (analogRead(pos3[2]) >= 900){
+    pot_actual = pot_actual + pos3[1];
+    encendido[2] = 1;
+  }delay(100);
+  if (analogRead(pos4[2]) >= 900){
+    pot_actual = pot_actual + pos4[1];
+    encendido[3] = 1;
+  }delay(100);
+
+  Serial.println(analogRead(A2));
+  Serial.print("Potencia en uso:" );
+  Serial.println(pot_actual);
+
+  Serial.print(analogRead(read_enabled));
+  if(analogRead(read_enabled) < 900){            //Només s'executarà el codi que manipula els electrodomèstics si el mode desactivat no està encès. En cas de que sí ho estigui, el codi que manipula els electrodomèstics no funcionarà.
+
+
+       //------------------------------------------------------------------------------------------------------------------------------------------------------
+       //------- EN CAS DE SOBREPASSAR LA POTÈNCIA MÀXIMA PERMESA, S'EXECUTA EL SISTEMA DE SELECCIÓ D'ELECTRODOMÈSTIC QUE CAL FICAR EN MODE ESPERA ------------
+       //----- (QUAN SELECCIONA L'ELECTRODOMÈSTIC, DESCONECTA EL PAS DEL CORRENT D'AQUEST A TRAVÉS DEL RELÉ I FICA EL ELECTRODOMÈSTIC EN EL MODE ESPERA)-------+
+       //------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+   if(pot_actual > pot_max){
+    if(encendido[0]==1 && encendido[1]==1 && encendido[2]==1 && encendido[3]==1){
+      if(pot_actual - pos4[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos3[1] <= pot_max){
+        digitalWrite(pos3[0], HIGH);
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos4[1] - pos3[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[3] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos2[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos4[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[1] = 1;
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos3[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[1] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos3[1] - pos4[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[1] = 1;
+        espera[2] = 1;
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos1[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        espera[0] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos4[1] <=pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos3[1] <=pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[0] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos3[1] - pos4[1] <=pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[2] = 1;
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos2[1] <=pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos2[0], HIGH);
+        espera[0] = 1;
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos2[1] - pos4[1] <=pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos2[1] - pos3[1] <=pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[0] = 1;
+        espera[1] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos2[1] - pos3[1] - pos4[1] <=pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[1] = 1;
+        espera[2] = 1;
+        espera[3] = 1;
+      }
+      
+      
+    }
+
+    if(encendido[0]==1 && encendido[1]==1 && encendido[2]==1 && encendido[3]==0){
+      if(pot_actual - pos3[1] <= pot_max){
+        digitalWrite(pos3[0], HIGH);
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos2[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos3[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[1] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos1[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        espera[0] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos3[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[0] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos2[1] - pos3[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[0] = 1;
+        espera[1] = 1;
+        espera[2] = 1;
+      }
+      
+    }
+
+    if(encendido[0]==1 && encendido[1]==1 && encendido[2]==0 && encendido[3]==1){
+      if(pot_actual - pos4[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos2[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos4[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[1] = 1;
+        espera[3] = 1; 
+      }
+      else if(pot_actual - pos1[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        espera[0] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos4[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[3] = 1; 
+      }
+      else if(pot_actual - pos1[1] - pos2[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos2[0], HIGH);
+        espera[0] = 1;
+        espera[1] = 1; 
+      }
+      else if(pot_actual - pos1[1] - pos2[1] - pos4[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[1] = 1;
+        espera[3] = 1; 
+      }
+    }
+
+    if(encendido[0]==1 && encendido[1]==0 && encendido[2]==1 && encendido[3]==1){
+      if(pot_actual - pos4[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos3[1] <= pot_max){
+        digitalWrite(pos3[0], HIGH);
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos4[1] - pos3[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[3] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos1[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        espera[0] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos4[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos3[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[0] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos3[1] - pos4[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[2] = 1;
+        espera[3] = 1;
+      }
+    }
+
+    if(encendido[0]==0 && encendido[1]==1 && encendido[2]==1 && encendido[3]==1){
+      if(pot_actual - pos4[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos3[1] <= pot_max){
+        digitalWrite(pos3[0], HIGH);
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos4[1] - pos3[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[3] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos2[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos4[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[1] = 1;
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos3[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[1] = 1;
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos3[1] - pos4[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[1] = 1;
+        espera[2] = 1;
+        espera[3] = 1;
+      }
+    }
+
+    if(encendido[0]==1 && encendido[1]==1 && encendido[2]==0 && encendido[3]==0){
+      if(pot_actual - pos2[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos1[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        espera[0] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos2[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos2[0], HIGH);
+        espera[0] = 1;
+        espera[1] = 1;
+      }    
+    }
+
+    if(encendido[0]==1 && encendido[1]==0 && encendido[2]==1 && encendido[3]==0){
+      if(pot_actual - pos3[1] <= pot_max){
+        digitalWrite(pos3[0], HIGH);
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos1[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        espera[0] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos3[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[0] = 1;
+        espera[2] = 1;
+      }    
+    }
+
+    if(encendido[0]==1 && encendido[1]==0 && encendido[2]==0 && encendido[3]==1){
+      if(pot_actual - pos4[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos1[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        espera[0] = 1;
+      }
+      else if(pot_actual - pos1[1] - pos4[1] <= pot_max){
+        digitalWrite(pos1[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[0] = 1;
+        espera[3] = 1;
+      }    
+    }
+
+    if(encendido[0]==0 && encendido[1]==1 && encendido[2]==1 && encendido[3]==0){
+      if(pot_actual - pos3[1] <= pot_max){
+        digitalWrite(pos3[0], HIGH);
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos2[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos3[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos3[0], HIGH);
+        espera[1] = 1;
+        espera[2] = 1;
+      }    
+    }
+
+    if(encendido[0]==0 && encendido[1]==1 && encendido[2]==0 && encendido[3]==1){
+      if(pot_actual - pos4[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos2[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        espera[1] = 1;
+      }
+      else if(pot_actual - pos2[1] - pos4[1] <= pot_max){
+        digitalWrite(pos2[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[1] = 1;
+        espera[3] = 1;
+      }    
+    }
+
+    if(encendido[0]==0 && encendido[1]==0 && encendido[2]==1 && encendido[3]==1){
+      if(pot_actual - pos4[1] <= pot_max){
+        digitalWrite(pos4[0], HIGH);
+        espera[3] = 1;
+      }
+      else if(pot_actual - pos3[1] <= pot_max){
+        digitalWrite(pos3[0], HIGH);
+        espera[2] = 1;
+      }
+      else if(pot_actual - pos3[1] - pos4[1] <= pot_max){
+        digitalWrite(pos3[0], HIGH);
+        digitalWrite(pos4[0], HIGH);
+        espera[2] = 1;
+        espera[3] = 1;
+      }    
+    }
+
+    
+   }
+
+
+  //----------------------------------------------------------------------------------------------------------------------------------------------------
+  //--------------  EN CAS DE NO SOBREPASSAR LA POTÈNCIA MÀXIMA PERMESA, ES COMPROVA SI ES POT ENCENDRE ALGUN ELECTRODOMÈSTIC EN ESPERA -----------------
+  //------------------------------------------------------------------------------------------------------------------------------------------------------
+ 
+ 
+    else if (pot_actual < pot_max){
+      if(espera[0]==1 || espera[1]==1 || espera[2]==1 || espera[3]==1){
+        if(espera[0]==1 && pot_actual + pos1[1] <= pot_max){
+          digitalWrite(pos1[0], LOW);
+          espera[0] = 0;
+        }
+        else if(espera[1]==1 && pot_actual + pos2[1] <= pot_max){
+          digitalWrite(pos2[0], LOW);
+          espera[1] = 0;
+        }
+        else if(espera[2]==1 && pot_actual + pos3[1] <= pot_max){
+          digitalWrite(pos3[0], LOW);
+          espera[2] = 0; 
+        }
+        else if(espera[3]==1 && pot_actual + pos4[1] <= pot_max){
+          digitalWrite(pos4[0], LOW);
+          espera[3] = 0;
+        }
+      }
+
+    
+    }
+  }
+  else{
+    digitalWrite(pos1[0], LOW);
+    digitalWrite(pos2[0], LOW);
+    digitalWrite(pos3[0], LOW);
+    digitalWrite(pos4[0], LOW);
+  }
+
+
+  //----------------------------------------------------------------------------------------------------------------------------------------------------
+  //--------------  SI ES PREM EL BOTÓ DE SETTINGS, COMENÇA LA FASE DE CONFIGURACIÓ ----------------------------------------------------------------------
+  //------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    if(analogRead(read_settings) >= 900){
+      int posAlreadyChosen[]={0,0,0,0};
+      completed = false;    //Esto sirve para saber si una parte del setting está completa o no, osea para seguir en el bucle de esa parte o no
+
+      lcd.clear();
+      lcd.print("----Ajustes-----");
+      delay(2000);
+      lcd.clear();
+
+
+
+
+  //---------------------------------Settings NEVERA------------------------------------------
+
+      completed = false;
+      while(completed == false){
+        String potValue = "";
+        lcd.clear();
+        lcd.print("----NEVERA------");
+        lcd.setCursor(0,1);
+        lcd.print("Potencia: ");
+        while(keyNumber >= 0 && keyNumber <4){      //Esta vez en vez de ser un bucle que dejará de funcionar cuando se pulse una tecla, dejará de funcionar cuando se hayan pulsado 4 teclas osea introducido 4 nums.
+          char key = keypad.getKey();
+          if(key){
+            int keyValue;            
+            keyValue = key - '0';
+    
+            if(keyValue >= 0 && keyValue <= 9){       //Si el valor pulsado es un numero entonces se escribe en pantalla
+            potValue = potValue + String(key);
+            lcd.print(key);
+            keyNumber = keyNumber + 1;
+            if(keyNumber == 4){
+                posnev[1]= potValue.toInt();
+                sd_pot_nev= potValue;
+                completed = true;
+                delay(1000);
+              }
+            }
+            else{                       //Si el valor pulsado no es un numero entonces te salta una advertencia y te devuelve al principio de la parte del setting (NO VUELVE AL INICIO DEL TODO)
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("valido");
+              delay(1000);
+              keyNumber = 0;
+              break;
+            }
+          }
+        }
+        keyNumber = 0;
+      }
+
+  //---------------------------------Settings LED Azul----------------------------------------
+
+      completed = false;
+      while(completed == false){
+        lcd.clear();
+        lcd.print("----LED Azul----");
+        lcd.setCursor(0,1);
+        lcd.print("Num prioridad: ");
+        while(keyEntered == false){     //Este es un bucle que hasta que no se pulse una telca no dejará de funcionar
+          char key = keypad.getKey();   //Esto detecta si hay una tecla pulsada
+          if(key){                      //Si se pulsa una tecla entonces
+            int keyValue;
+            keyValue = key - '0';       //Combierte el valor de la tecla que es un char a un int para poder saber su valor
+          
+            if(keyValue >= 1 && keyValue <= 4){     //Comprueba si el valor dado por teclado está entre 1 y 4
+              lcd.print(key);
+              if(keyValue == 1 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos1[0]=2;
+                sd_pos1[0] = "2";  //Este string de esa variable se usará luego para guardarlo en la SD.
+                pos1[2]=read_azul;
+                posAlreadyChosen[0]=1;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 2 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos2[0]=2;
+                sd_pos2[0] = "2";
+                pos2[2]=read_azul;
+                posAlreadyChosen[0]=2;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 3 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos3[0]=2;
+                sd_pos3[0] = "2";
+                pos3[2]=read_azul;
+                posAlreadyChosen[0]=3;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 4 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos4[0]=2;
+                sd_pos4[0] = "2";
+                pos4[2]=read_azul;
+                posAlreadyChosen[0]=4;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else{
+                lcd.clear();
+                lcd.print("Posicion ya");
+                lcd.setCursor(0,1);
+                lcd.print("escogida");
+                delay(2000);
+                break;
+              }              
+            }
+            else{             //Si no está entre 1 y 4 entonces se vuelve a empezar esa parte del setting.
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("entre 1-4");
+              delay(2000);
+              lcd.clear();
+              break;
+            }
+          }
+        }
+      }
+      keyEntered = false;
+      
+       
+      completed = false;
+      while(completed == false){
+        String potValue = "";
+        lcd.clear();
+        lcd.print("----LED Azul----");
+        lcd.setCursor(0,1);
+        lcd.print("Potencia: ");
+        while(keyNumber >= 0 && keyNumber <4){      //Esta vez en vez de ser un bucle que dejará de funcionar cuando se pulse una tecla, dejará de funcionar cuando se hayan pulsado 4 teclas osea introducido 4 nums.
+          char key = keypad.getKey();
+          if(key){
+            int keyValue;            
+            keyValue = key - '0';
+    
+            if(keyValue >= 0 && keyValue <= 9){       //Si el valor pulsado es un numero entonces se escribe en pantalla
+            potValue = potValue + String(key);
+            lcd.print(key);
+            keyNumber = keyNumber + 1;
+            if(keyNumber == 4){
+              if(posAlreadyChosen[0] == 1){
+                pos1[1]=potValue.toInt();
+                sd_pos1[1] = potValue;
+                }
+              else if(posAlreadyChosen[0] == 2){
+                pos2[1]=potValue.toInt();
+                sd_pos2[1] = potValue;
+                }
+              else if(posAlreadyChosen[0] == 3){
+                pos3[1]=potValue.toInt();
+                sd_pos3[1] = potValue;
+                }
+              else if(posAlreadyChosen[0] == 4){
+                pos4[1]=potValue.toInt();
+                sd_pos4[1] = potValue;
+                }
+                completed = true;
+                delay(1000);
+              }
+            }
+            else{                       //Si el valor pulsado no es un numero entonces te salta una advertencia y te devuelve al principio de la parte del setting (NO VUELVE AL INICIO DEL TODO)
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("valido");
+              delay(1000);
+              keyNumber = 0;
+              break;
+            }
+          }
+        }
+        keyNumber = 0;
+      }
+
+      Serial.println("CORRECTO");
+
+
+  //---------------------------Setting LED amarillo--------------------------------------
+
+      completed = false;
+      while(completed == false){
+        lcd.clear();
+        lcd.print("--LED Amarillo--");
+        lcd.setCursor(0,1);
+        lcd.print("Num prioridad: ");
+        while(keyEntered == false){     //Este es un bucle que hasta que no se pulse una telca no dejará de funcionar
+          char key = keypad.getKey();   //Esto detecta si hay una tecla pulsada
+          if(key){                      //Si se pulsa una tecla entonces
+            int keyValue;
+            keyValue = key - '0';       //Combierte el valor de la tecla que es un char a un int para poder saber su valor
+          
+            if(keyValue >= 1 && keyValue <= 4){     //Comprueba si el valor dado por teclado está entre 1 y 4
+              lcd.print(key);
+              if(keyValue == 1 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos1[0]=3;
+                sd_pos1[0] = "3";
+                pos1[2]=read_yell;
+                posAlreadyChosen[1]=1;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 2 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos2[0]=3;
+                sd_pos2[0] = "3";
+                pos2[2]=read_yell;
+                posAlreadyChosen[1]=2;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 3 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos3[0]=3;
+                sd_pos3[0] = "3";
+                pos3[2]=read_yell;
+                posAlreadyChosen[1]=3;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 4 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos4[0]=3;
+                sd_pos3[0] = "3";
+                pos4[2]=read_yell;
+                posAlreadyChosen[1]=4;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else{
+                lcd.clear();
+                lcd.print("Posicion ya");
+                lcd.setCursor(0,1);
+                lcd.print("escogida");
+                delay(2000);
+                break;
+              }              
+            }
+            else{             //Si no está entre 1 y 4 entonces se vuelve a empezar esa parte del setting.
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("entre 1-4");
+              delay(2000);
+              lcd.clear();
+              break;
+            }
+          }
+        }
+      }
+      keyEntered = false;
+      
+       
+      completed = false;
+      while(completed == false){
+        String potValue = "";
+        lcd.clear();
+        lcd.print("--LED Amarillo--");
+        lcd.setCursor(0,1);
+        lcd.print("Potencia: ");
+        while(keyNumber >= 0 && keyNumber <4){      //Esta vez en vez de ser un bucle que dejará de funcionar cuando se pulse una tecla, dejará de funcionar cuando se hayan pulsado 4 teclas osea introducido 4 nums.
+          char key = keypad.getKey();
+          if(key){
+            int keyValue;
+            keyValue = key - '0';
+    
+            if(keyValue >= 0 && keyValue <= 9){       //Si el valor pulsado es un numero entonces se escribe en pantalla
+            potValue = potValue + String(key);
+            lcd.print(key);
+            keyNumber = keyNumber + 1;
+            if(keyNumber == 4){
+              if(posAlreadyChosen[1] == 1){
+                pos1[1]=potValue.toInt();
+                sd_pos1[1] = potValue;
+                }
+              else if(posAlreadyChosen[1] == 2){
+                pos2[1]=potValue.toInt();
+                sd_pos2[1] = potValue;
+                }
+              else if(posAlreadyChosen[1] == 3){
+                pos3[1]=potValue.toInt();
+                sd_pos3[1] = potValue;
+                }
+              else if(posAlreadyChosen[1] == 4){
+                pos4[1]=potValue.toInt();
+                sd_pos4[1] = potValue;
+                }              
+                completed = true;
+                delay(1000);
+              }
+            }
+            else{                       //Si el valor pulsado no es un numero entonces te salta una advertencia y te devuelve al principio de la parte del setting (NO VUELVE AL INICIO DEL TODO)
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("valido");
+              delay(1000);
+              keyNumber = 0;
+              break;
+            }
+          }
+        }
+        keyNumber = 0;
+      }
+
+      
+  //------------------------Settings LED verde---------------------------------------------
+
+
+      completed = false;
+      while(completed == false){
+        lcd.clear();
+        lcd.print("---LED Verde---");
+        lcd.setCursor(0,1);
+        lcd.print("Num prioridad: ");
+        while(keyEntered == false){     //Este es un bucle que hasta que no se pulse una telca no dejará de funcionar
+          char key = keypad.getKey();   //Esto detecta si hay una tecla pulsada
+          if(key){                      //Si se pulsa una tecla entonces
+            int keyValue;
+            keyValue = key - '0';       //Combierte el valor de la tecla que es un char a un int para poder saber su valor
+          
+            if(keyValue >= 1 && keyValue <= 4){     //Comprueba si el valor dado por teclado está entre 1 y 4
+              lcd.print(key);
+              if(keyValue == 1 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos1[0]=6;
+                sd_pos1[0] = "6";
+                pos1[2]=read_verd;
+                posAlreadyChosen[2]=1;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 2 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos2[0]=6;
+                sd_pos2[0] = "6";
+                pos2[2]=read_verd;
+                posAlreadyChosen[2]=2;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 3 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos3[0]=6;
+                sd_pos3[0] = "6";
+                pos3[2]=read_verd;
+                posAlreadyChosen[2]=3;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 4 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos4[0]=6;
+                sd_pos4[0] = "6";
+                pos4[2]=read_verd;
+                posAlreadyChosen[2]=4;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else{
+                lcd.clear();
+                lcd.print("Posicion ya");
+                lcd.setCursor(0,1);
+                lcd.print("escogida");
+                delay(2000);
+                break;
+              }              
+            }
+            else{             //Si no está entre 1 y 4 entonces se vuelve a empezar esa parte del setting.
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("entre 1-4");
+              delay(2000);
+              lcd.clear();
+              break;
+            }
+          }
+        }
+      }
+      keyEntered = false;
+      
+       
+      completed = false;
+      while(completed == false){
+        String potValue = "";
+        lcd.clear();
+        lcd.print("--LED Verde--");
+        lcd.setCursor(0,1);
+        lcd.print("Potencia: ");
+        while(keyNumber >= 0 && keyNumber <4){      //Esta vez en vez de ser un bucle que dejará de funcionar cuando se pulse una tecla, dejará de funcionar cuando se hayan pulsado 4 teclas osea introducido 4 nums.
+          char key = keypad.getKey();
+          if(key){
+            int keyValue;
+            keyValue = key - '0';
+    
+            if(keyValue >= 0 && keyValue <= 9){       //Si el valor pulsado es un numero entonces se escribe en pantalla
+            potValue = potValue + String(key);
+            lcd.print(key);
+            keyNumber = keyNumber + 1;
+            if(keyNumber == 4){
+              if(posAlreadyChosen[2] == 1){
+                pos1[1]=potValue.toInt();
+                sd_pos1[1] = potValue;
+                }
+              else if(posAlreadyChosen[2] == 2){
+                pos2[1]=potValue.toInt();
+                sd_pos2[1] = potValue;
+                }
+              else if(posAlreadyChosen[2] == 3){
+                pos3[1]=potValue.toInt();
+                sd_pos3[1] = potValue;
+                }
+              else if(posAlreadyChosen[2] == 4){
+                pos4[1]=potValue.toInt();
+                sd_pos4[1] = potValue;
+                }              
+                completed = true;
+                delay(1000);
+              }
+            }
+            else{                       //Si el valor pulsado no es un numero entonces te salta una advertencia y te devuelve al principio de la parte del setting (NO VUELVE AL INICIO DEL TODO)
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("valido");
+              delay(1000);
+              keyNumber = 0;
+              break;
+            }
+          }
+        }
+        keyNumber = 0;
+      }
+
+
+  //--------------------------------------Settings LED Rojo----------------------------------------------
+
+
+      completed = false;
+      while(completed == false){
+        lcd.clear();
+        lcd.print("----LED Rojo----");
+        lcd.setCursor(0,1);
+        lcd.print("Num prioridad: ");
+        while(keyEntered == false){     //Este es un bucle que hasta que no se pulse una telca no dejará de funcionar
+          char key = keypad.getKey();   //Esto detecta si hay una tecla pulsada
+          if(key){                      //Si se pulsa una tecla entonces
+            int keyValue;
+            keyValue = key - '0';       //Combierte el valor de la tecla que es un char a un int para poder saber su valor
+          
+            if(keyValue >= 1 && keyValue <= 4){     //Comprueba si el valor dado por teclado está entre 1 y 4
+              lcd.print(key);
+              if(keyValue == 1 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos1[0]=5;
+                sd_pos1[0] = "5";
+                pos1[2]=read_rojo;
+                posAlreadyChosen[3]=1;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 2 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos2[0]=5;
+                sd_pos2[0] = "5";
+                pos2[2]=read_rojo;
+                posAlreadyChosen[3]=2;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 3 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos3[0]=5;
+                sd_pos3[0] = "5";
+                pos3[2]=read_rojo;
+                posAlreadyChosen[3]=3;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else if(keyValue == 4 && keyValue!=posAlreadyChosen[0] && keyValue!=posAlreadyChosen[1] && keyValue!=posAlreadyChosen[2] && keyValue!=posAlreadyChosen[3]){
+                pos4[0]=5;
+                sd_pos4[0] = "5";
+                pos4[2]=read_rojo;
+                posAlreadyChosen[3]=4;
+                keyEntered = true;
+                completed = true;
+                delay(600);
+              }
+              else{
+                lcd.clear();
+                lcd.print("Posicion ya");
+                lcd.setCursor(0,1);
+                lcd.print("escogida");
+                delay(2000);
+                break;
+              }              
+            }
+            else{             //Si no está entre 1 y 4 entonces se vuelve a empezar esa parte del setting.
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("entre 1-4");
+              delay(2000);
+              lcd.clear();
+              break;
+            }
+          }
+        }
+      }
+      keyEntered = false;
+      
+       
+      completed = false;
+      while(completed == false){
+        String potValue = "";
+        lcd.clear();
+        lcd.print("----LED Rojo----");
+        lcd.setCursor(0,1);
+        lcd.print("Potencia: ");
+        while(keyNumber >= 0 && keyNumber <4){      //Esta vez en vez de ser un bucle que dejará de funcionar cuando se pulse una tecla, dejará de funcionar cuando se hayan pulsado 4 teclas osea introducido 4 nums.
+          char key = keypad.getKey();
+          if(key){
+            int keyValue;            
+            keyValue = key - '0';
+    
+            if(keyValue >= 0 && keyValue <= 9){       //Si el valor pulsado es un numero entonces se escribe en pantalla
+            potValue = potValue + String(key);
+            lcd.print(key);
+            keyNumber = keyNumber + 1;
+            if(keyNumber == 4){
+              if(posAlreadyChosen[3] == 1){
+                pos1[1]=potValue.toInt();
+                sd_pos1[1] = potValue;
+                }
+              else if(posAlreadyChosen[3] == 2){
+                pos2[1]=potValue.toInt();
+                sd_pos2[1] = potValue;
+                }
+              else if(posAlreadyChosen[3] == 3){
+                pos3[1]=potValue.toInt();
+                sd_pos3[1] = potValue;
+                }
+              else if(posAlreadyChosen[3] == 4){
+                pos4[1]=potValue.toInt();
+                sd_pos4[1] = potValue;
+                }
+                completed = true;
+                delay(1000);
+              }
+            }
+            else{                       //Si el valor pulsado no es un numero entonces te salta una advertencia y te devuelve al principio de la parte del setting (NO VUELVE AL INICIO DEL TODO)
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("valido");
+              delay(1000);
+              keyNumber = 0;
+              break;
+            }
+          }
+        }
+        keyNumber = 0;
+      }
+
+
+  //----------------------Settings potencia Max ------------------------
+
+
+      completed = false;
+      while(completed == false){
+        String potValue = "";
+        lcd.clear();
+        lcd.print("Potencia Maxima:");
+        lcd.setCursor(0,1);
+        while(keyNumber >= 0 && keyNumber <4){      //Esta vez en vez de ser un bucle que dejará de funcionar cuando se pulse una tecla, dejará de funcionar cuando se hayan pulsado 4 teclas osea introducido 4 nums.
+          char key = keypad.getKey();
+          if(key){
+            int keyValue;            
+            keyValue = key - '0';
+    
+            if(keyValue >= 0 && keyValue <= 9){       //Si el valor pulsado es un numero entonces se escribe en pantalla
+            potValue = potValue + String(key);
+            lcd.print(key);
+            keyNumber = keyNumber + 1;
+            if(keyNumber == 4){
+              pot_max = potValue.toInt(); 
+              sd_pot_max = potValue;
+              completed = true;
+              delay(1000);
+              }
+            }
+            else{                       //Si el valor pulsado no es un numero entonces te salta una advertencia y te devuelve al principio de la parte del setting (NO VUELVE AL INICIO DEL TODO)
+              lcd.clear();
+              lcd.print("Introduce valor");
+              lcd.setCursor(0,1);
+              lcd.print("valido");
+              delay(1000);
+              keyNumber = 0;
+              break;
+            }
+          }
+        }
+        keyNumber = 0;
+      }
+
+  //--------------------------------------------Escribir los datos del setting a la SD --------------------------------
+
+      SD.remove("DATOS.TXT");
+      delay(100);
+      archivo = SD.open("DATOS.TXT", FILE_WRITE);
+      if(archivo){
+        Serial.println("SE HAN GUARDADO LOS AJUSTES");
+      }
+      archivo.println(sd_pos1[0]);
+      archivo.println(sd_pos2[0]);
+      archivo.println(sd_pos3[0]);
+      archivo.println(sd_pos4[0]);
+      archivo.println(sd_pos1[1]);
+      archivo.println(sd_pos2[1]);
+      archivo.println(sd_pos3[1]);
+      archivo.println(sd_pos4[1]);
+      archivo.println(sd_pot_max);
+      archivo.println(sd_pot_nev);
+
+      archivo.close();
+    
+
+
+
+
+
+
+
+     
+      lcd.clear();
+      lcd.print("Configuracion");
+      lcd.setCursor(0,1);
+      lcd.print("exitosa");
+      delay(1000);
+    }
+   
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Potencia: ");
+  lcd.print(pot_actual);
+  if(analogRead(read_enabled) >= 1011){
+     lcd.setCursor(0, 1);
+     lcd.print("-(DESACTIVADO)-");
+  }
+
+  pot_actual = 0;
+  encendido[0] = 0;
+  encendido[1] = 0;
+  encendido[2] = 0;
+  encendido[3] = 0;
+
+
+  delay(400);
+
+}
